@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "react_native_ulink_sdk": ["../src/index"],
+      "react_native_ulink_sdk/*": ["../src/*"]
+    }
+  }
+}
