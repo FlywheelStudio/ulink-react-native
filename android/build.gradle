@@ -8,11 +8,32 @@ version = '0.1.0'
 
 android {
   namespace "ly.ulink.reactnative"
+  compileSdk 35
   defaultConfig {
+    minSdk 24
     versionCode 1
     versionName "0.1.0"
+  }
+  kotlinOptions {
+    jvmTarget = '17'
   }
   lintOptions {
     abortOnError false
   }
+}
+
+repositories {
+  mavenCentral()
+  google()
+}
+
+dependencies {
+  implementation project(':expo-modules-core')
+  // Maven coordinate — keeps Play Install Referrer transitive (never a vendored .aar)
+  implementation 'ly.ulink:ulink-sdk:1.1.0'
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+  // kotlinx-serialization-json is 'runtime' scope in the SDK POM so it is not on our
+  // compile classpath by default.  Declare it explicitly so ULinkBridge can import
+  // JsonElement / JsonObject / JsonPrimitive / JsonArray / JsonNull / buildJsonObject.
+  implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0'
 }
