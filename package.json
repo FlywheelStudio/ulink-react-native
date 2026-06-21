@@ -5,7 +5,8 @@
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "scripts": {
-    "build": "expo-module build",
+    "build": "expo-module build && tsc --build plugin",
+    "build:plugin": "tsc --build plugin",
     "clean": "expo-module clean",
     "lint": "expo-module lint",
     "test": "expo-module test",
@@ -33,6 +34,7 @@
   "homepage": "https://github.com/FlywheelStudio/ulink-react-native.git#readme",
   "devDependencies": {
     "@babel/core": "^7.26.0",
+    "@expo/config-plugins": "^56.0.9",
     "@types/jest": "^29.2.1",
     "@types/react": "~19.1.1",
     "babel-preset-expo": "~55.0.8",
@@ -50,7 +52,8 @@
   "jest": {
     "preset": "jest-expo",
     "roots": [
-      "<rootDir>/src"
+      "<rootDir>/src",
+      "<rootDir>/plugin/src"
     ]
   },
   "peerDependencies": {
