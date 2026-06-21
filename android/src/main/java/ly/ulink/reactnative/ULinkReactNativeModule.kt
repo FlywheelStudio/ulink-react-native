@@ -5,11 +5,16 @@ package ly.ulink.reactnative
 //
 // Design rules (global-constraints.md + task-7-brief.md):
 //   - Name: "ULinkReactNative"
-//   - initialize() is a suspend AsyncFunction; all other calls queue until it resolves.
+//   - initialize() is a suspend AsyncFunction; pre-init calls to other methods reject
+//     with a clear error (requireSdk() throws). JS must await initialize() before other
+//     calls — this is an intentional, documented Android/iOS behavioural difference.
+//     iOS has a pendingCalls queue; Android does not (see Fix Report in task-7-report.md).
 //   - enableDeepLinkIntegration is always forced false (ULinkBridge.config() enforces it).
 //   - Cold-start links are buffered until BOTH: init complete AND first JS listener attached.
 //   - Links are delivered via handleDeepLink(uri) → emits on SharedFlows → onDynamicLink /
 //     onUnifiedLink events.  processULinkUri() is used only for the pull-method processULink().
+//   - ALL mutations of pendingUris, initReady and observing are dispatched through `scope`
+//     (Dispatchers.Main). This serialises them on a single thread — no locks needed, no race.
 //   - dispose() cancels the module coroutine scope and clears SDK ref + buffer.
 //     It does NOT call sdk.dispose() (which would cancel the SDK's own scope).
 //   - Never wire dispose() to JS unmount / fast-refresh.
@@ -26,14 +31,20 @@ import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import ly.ulink.sdk.ULink
 
 class ULinkReactNativeModule : Module() {
 
-    // ── Coroutine scope for stream collectors and pending-call execution ──────
+    // ── Coroutine scope ──────────────────────────────────────────────────────
+    // All stream collectors and ALL mutations to the cold-start buffer run here.
+    // Using Dispatchers.Main gives us a single-threaded serial executor for free —
+    // no mutex / synchronized block needed for pendingUris, initReady, or observing.
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // ── SDK reference (null until initialize() completes) ────────────────────
+    // Written from scope (Main), read from Coroutine function bodies which may run
+    // on the modulesQueue HandlerThread — @Volatile ensures cross-thread visibility.
     @Volatile private var sdk: ULink? = null
 
     // ── Two-gate cold-start buffer ───────────────────────────────────────────
@@ -41,15 +52,12 @@ class ULinkReactNativeModule : Module() {
     //   1. initReady  — ULink.initialize() has completed and streams are live.
     //   2. observing  — at least one JS event listener has attached (OnStartObserving).
     //
-    // This prevents the race where a cold-start link is emitted before JS has
-    // called ULink.onDynamicLink(cb) / ULink.onUnifiedLink(cb).
-    @Volatile private var initReady = false
-    @Volatile private var observing = false
-    private val pendingUris = mutableListOf<Uri>()   // accessed only on Main dispatcher
-
-    // ── Pending method calls queued before init completes ────────────────────
-    // Each entry is a lambda that is invoked once the SDK is ready.
-    private val pendingCalls = mutableListOf<() -> Unit>()
+    // THREAD SAFETY: pendingUris, initReady and observing are accessed EXCLUSIVELY
+    // through scope (Dispatchers.Main). Do NOT read or write them from any other
+    // coroutine context or callback without dispatching through scope.launch { }.
+    private var initReady = false
+    private var observing = false
+    private val pendingUris = mutableListOf<Uri>()
 
     // ── Module definition ────────────────────────────────────────────────────
 
@@ -61,18 +69,26 @@ class ULinkReactNativeModule : Module() {
         Events("onDynamicLink", "onUnifiedLink", "onReinstallDetected", "onLog")
 
         // ── JS-listener gate ─────────────────────────────────────────────────
-        // Fires when the first JS listener attaches to any event on this module.
-        // Once both gates are open (init + observing), buffered cold-start links flush.
+        // Fires on the Main thread when the first JS listener attaches.
+        // Dispatched through scope to serialise with the buffer mutations in initialize().
         OnStartObserving {
-            observing = true
-            maybeFlush()
+            scope.launch {
+                observing = true
+                maybeFlush()
+            }
         }
 
         // ── initialize ───────────────────────────────────────────────────────
-        // suspend: Expo runs this on the module's background scope via Coroutine.
-        // Forces enableDeepLinkIntegration=false via ULinkBridge.config().
+        // Expo runs AsyncFunction Coroutine blocks on its modulesQueue HandlerThread,
+        // NOT on the Main thread. ULink.initialize() is a suspend fun that blocks
+        // until the SDK is ready — that is fine to run off Main.
+        //
+        // However, ALL mutations to pendingUris / initReady / observing must stay on
+        // the Main thread. After the suspend call returns we hop back to scope (Main)
+        // via withContext to do the launch-intent capture, set initReady, and flush.
         AsyncFunction("initialize") Coroutine { configMap: Map<String, Any?> ->
-            // Idempotent: if already initialized return immediately
+            // Idempotent: if already initialized return immediately.
+            // sdk is @Volatile so this read is safe from any thread.
             if (sdk != null) return@Coroutine
 
             val ctx = appContext.reactContext?.applicationContext
@@ -80,26 +96,29 @@ class ULinkReactNativeModule : Module() {
 
             val sdkConfig = ULinkBridge.config(configMap)
 
-            // Suspend until the native SDK bootstrap completes
+            // Suspend on modulesQueue until the native SDK bootstrap completes.
             val instance = ULink.initialize(ctx, sdkConfig)
-            sdk = instance
 
-            // Subscribe SharedFlows → Expo events (must be before capture below)
+            // Subscribe SharedFlows BEFORE setting initReady so collectors are live
+            // when the first URI is flushed. subscribeStreams launches on scope (Main).
             subscribeStreams(instance)
 
-            // Capture launch intent (cold-start deep link set before this module existed)
-            appContext.currentActivity?.intent?.data?.let { uri ->
-                bufferOrDeliver(uri)
+            // Assign sdk before the Main-thread work so requireSdk() succeeds from
+            // that point forward (visible cross-thread via @Volatile).
+            sdk = instance
+
+            // Hop to scope (Main) for ALL buffer/flag mutations and the flush.
+            // withContext suspends the modulesQueue coroutine until this block finishes,
+            // so initialize() doesn't return to the JS caller until the flush is done.
+            withContext(scope.coroutineContext) {
+                // Capture launch intent (cold-start deep link set before module existed).
+                appContext.currentActivity?.intent?.data?.let { uri ->
+                    bufferOrDeliver(uri)
+                }
+                // Open the init gate — maybeFlush() will fire if observing is already true.
+                initReady = true
+                maybeFlush()
             }
-
-            // Mark init complete and flush if the JS listener gate is already open
-            initReady = true
-            maybeFlush()
-
-            // Drain any method calls that arrived before we were ready
-            val toRun = pendingCalls.toList()
-            pendingCalls.clear()
-            toRun.forEach { it() }
         }
 
         // ── createLink ───────────────────────────────────────────────────────
@@ -181,18 +200,22 @@ class ULinkReactNativeModule : Module() {
         // scope — the SDK outlives any single module instance).
         AsyncFunction("dispose") Coroutine { ->
             scope.coroutineContext.cancelChildren()
-            sdk = null
-            initReady = false
-            observing = false
-            pendingUris.clear()
-            pendingCalls.clear()
+            // Hop to Main to clear buffer state in the same serialised context.
+            withContext(Dispatchers.Main) {
+                sdk = null
+                initReady = false
+                observing = false
+                pendingUris.clear()
+            }
         }
 
         // ── OnNewIntent — warm deep links ─────────────────────────────────────
-        // Fired when the app is already running and a new intent arrives (warm link).
-        // If the SDK is not yet ready the URI is buffered and flushed after init.
+        // Fired on the Main thread when the app is already running and a new intent
+        // arrives (warm link). Dispatch through scope to serialise with the buffer.
         OnNewIntent { intent: Intent ->
-            intent.data?.let { uri -> bufferOrDeliver(uri) }
+            scope.launch {
+                intent.data?.let { uri -> bufferOrDeliver(uri) }
+            }
         }
     }
 
@@ -240,9 +263,9 @@ class ULinkReactNativeModule : Module() {
     }
 
     // ── Cold-start / warm link buffer ────────────────────────────────────────
+    // All functions below MUST be called from within scope (Dispatchers.Main).
 
     // Buffer the URI if either gate is still closed; otherwise deliver immediately.
-    // Must be called on the Main dispatcher (scope.launch ensures this for async paths).
     private fun bufferOrDeliver(uri: Uri) {
         if (initReady && observing) {
             deliverUri(uri)
@@ -268,12 +291,10 @@ class ULinkReactNativeModule : Module() {
 
     // ── SDK accessor ──────────────────────────────────────────────────────────
 
-    // For suspend methods that should queue if the SDK isn't ready yet, we use
-    // requireSdk() which throws immediately — but all AsyncFunction Coroutine
-    // blocks only reach requireSdk() after initialize() has set sdk, because:
-    //   - If called before init, the Expo module queues them (Expo modules run
-    //     functions sequentially per module, so a second call waits for the first).
-    // For extra safety we also maintain pendingCalls for non-Coroutine lambdas.
+    // requireSdk() throws if called before initialize() completes. This is intentional:
+    // Android requires JS to await initialize() before calling other methods.
+    // Pre-init calls receive a clear rejection rather than silently queuing.
+    // (iOS implements a pendingCalls queue; Android does not — see task-7-report.md Fix Report.)
     private fun requireSdk(): ULink =
         sdk ?: throw IllegalStateException(
             "ULink SDK not initialized. Call initialize() first and await it."
