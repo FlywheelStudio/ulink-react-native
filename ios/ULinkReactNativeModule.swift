@@ -55,7 +55,14 @@ public class ULinkReactNativeModule: Module {
                     let sdk = try await ULink.initialize(config: config)
                     self.ulink = sdk
                     self.subscribeStreams(sdk)
+                    // Drain the method-call queue first so SDK event subscriptions
+                    // are live before any buffered link is processed.
                     await self.queue.markReady(sdk, module: self)
+                    // Drain any URLs buffered by the AppDelegate subscriber before
+                    // this initialize() call completed (cold-start universal links,
+                    // custom-scheme URLs).  processULinkUrl() emits on the Combine
+                    // streams already wired above, so events reach JS correctly.
+                    await ULinkIncomingLinkBuffer.shared.drain(sdk: sdk)
                     self.initTask = nil   // fix #6: clear task handle after successful init
                     promise.resolve()
                 } catch {

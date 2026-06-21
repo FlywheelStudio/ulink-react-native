@@ -177,6 +177,52 @@ func parseParameters(_ map: [String: Any]) throws -> ULinkParameters {
 }
 
 // ---------------------------------------------------------------------------
+// MARK: - Incoming-link buffer (used by the AppDelegate subscriber)
+// ---------------------------------------------------------------------------
+
+/// Singleton actor that buffers URLs delivered by the AppDelegate subscriber
+/// (universal links and custom-scheme URLs) that arrive before `ULink.initialize()`
+/// has been called by JS.
+///
+/// Usage pattern:
+///   AppDelegate subscriber:
+///     Task { await ULinkIncomingLinkBuffer.shared.buffer(url) }
+///
+///   Module after successful initialize():
+///     await ULinkIncomingLinkBuffer.shared.drain(sdk: sdk)
+///
+/// After drain(), every subsequent `buffer()` call is forwarded immediately.
+actor ULinkIncomingLinkBuffer {
+
+    static let shared = ULinkIncomingLinkBuffer()
+    private init() {}
+
+    private var buffered: [URL] = []
+    private var sdk: ULink? = nil
+
+    /// Called by the AppDelegate subscriber with each incoming URL.
+    /// Buffers the URL when the SDK is not yet ready; forwards immediately otherwise.
+    func buffer(_ url: URL) async {
+        if let sdk = sdk {
+            await sdk.processULinkUrl(url)
+        } else {
+            buffered.append(url)
+        }
+    }
+
+    /// Called by the module after `ULink.initialize()` succeeds.
+    /// Replays all buffered URLs through the now-live SDK instance.
+    func drain(sdk: ULink) async {
+        self.sdk = sdk
+        let pending = buffered
+        buffered.removeAll()
+        for url in pending {
+            await sdk.processULinkUrl(url)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // MARK: - Pending-call infrastructure
 // ---------------------------------------------------------------------------
 

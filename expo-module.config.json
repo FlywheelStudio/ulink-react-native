@@ -1,7 +1,8 @@
 {
   "platforms": ["apple", "android"],
   "apple": {
-    "modules": ["ULinkReactNativeModule"]
+    "modules": ["ULinkReactNativeModule"],
+    "appDelegateSubscribers": ["ULinkAppDelegateSubscriber"]
   },
   "android": {
     "modules": ["ly.ulink.reactnative.ULinkReactNativeModule"]
