@@ -21,6 +21,8 @@ export interface ULinkConfig {
 }
 
 export interface ULinkParameters {
+  /** The ULink domain to create the link on (e.g. "shadd.shared.ly"). Required. */
+  domain: string;
   type?: ULinkLinkType;
   slug?: string;
   iosUrl?: string;

@@ -96,8 +96,11 @@ class ULinkReactNativeModule : Module() {
 
             val sdkConfig = ULinkBridge.config(configMap)
 
-            // Suspend on modulesQueue until the native SDK bootstrap completes.
-            val instance = ULink.initialize(ctx, sdkConfig)
+            // ULink.initialize() calls ProcessLifecycleOwner.get().lifecycle.addObserver()
+            // which MUST run on the Main thread (Android lifecycle-2.x constraint).
+            // Expo's AsyncFunction Coroutine runs on the modulesQueue (background thread),
+            // so we must hop to Main for the entire ULink.initialize() call.
+            val instance = withContext(Dispatchers.Main) { ULink.initialize(ctx, sdkConfig) }
 
             // Subscribe SharedFlows BEFORE setting initReady so collectors are live
             // when the first URI is flushed. subscribeStreams launches on scope (Main).

@@ -11,6 +11,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -127,12 +128,16 @@ export default function App() {
       // 2d. createLink
       let createdUrl: string | undefined;
       try {
+        // Use platform-specific slug so iOS and Android runs don't conflict
+        const slug = Platform.OS === 'android' ? 'rn-e2e-android' : 'rn-e2e-ios';
         const resp = await ULink.createLink({
-          slug: 'rn-e2e',
+          domain: 'shadd.shared.ly',
+          slug,
+          fallbackUrl: 'https://ulink.ly',
           parameters: { foo: 'bar' },
         });
         createdUrl = resp.url;
-        const detail = `success=${resp.success} url=${resp.url ?? 'undefined'}`;
+        const detail = `success=${resp.success} url=${resp.url ?? 'undefined'} error=${resp.error ?? 'none'}`;
         log('createLink', detail);
         addResult({
           label: 'createLink',
