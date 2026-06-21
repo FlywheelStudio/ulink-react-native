@@ -5,6 +5,13 @@ import {
 } from './types';
 import type { EventSubscription } from 'expo-modules-core';
 
+export class ULinkError extends Error {
+  constructor(message: string, public code?: string) {
+    super(message);
+    this.name = 'ULinkError';
+  }
+}
+
 function toSessionState(value: string): SessionState {
   const match = (Object.values(SessionState) as string[]).includes(value);
   return match ? (value as SessionState) : SessionState.IDLE;
