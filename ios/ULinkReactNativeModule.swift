@@ -56,6 +56,7 @@ public class ULinkReactNativeModule: Module {
                     self.ulink = sdk
                     self.subscribeStreams(sdk)
                     await self.queue.markReady(sdk, module: self)
+                    self.initTask = nil   // fix #6: clear task handle after successful init
                     promise.resolve()
                 } catch {
                     self.initTask = nil
@@ -329,9 +330,7 @@ public class ULinkReactNativeModule: Module {
         AsyncFunction("dispose") { (promise: Promise) in
             if let sdk = self.ulink {
                 sdk.dispose()
-                self.cancellables.removeAll()
-                self.ulink = nil
-                self.initTask = nil
+                self.didDispose()
                 promise.resolve()
             } else {
                 let call = PendingCall.dispose(
@@ -341,6 +340,19 @@ public class ULinkReactNativeModule: Module {
                 Task { await self.queue.enqueue(call, module: self) }
             }
         }
+    }
+
+    // MARK: - Dispose state reset
+
+    /// Resets all module-owned state after sdk.dispose() completes.
+    /// Called from BOTH the direct dispose path and the queued dispose execution
+    /// so a dispose-before-init can't leave stale state that collides with a
+    /// later successful initialize().
+    /// Internal (not private) so ULinkBridge.swift's queued .dispose execution can call it.
+    func didDispose() {
+        self.ulink = nil
+        self.cancellables.removeAll()
+        self.initTask = nil
     }
 
     // MARK: - Combine stream subscriptions

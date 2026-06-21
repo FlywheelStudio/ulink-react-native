@@ -46,14 +46,13 @@ func resolvedDataToMap(_ data: ULinkResolvedData) -> [String: Any?] {
 
     return [
         "slug":                 data.slug,
-        "iosUrl":               data.iosUrl,
-        "androidUrl":           data.androidUrl,
         "iosFallbackUrl":       data.iosFallbackUrl,
         "androidFallbackUrl":   data.androidFallbackUrl,
         "fallbackUrl":          data.fallbackUrl,
         "parameters":           data.parameters,
         "socialMediaTags":      socialMediaTagsMap,
         "metadata":             data.metadata,
+        "rawData":              data.rawData,
         "type":                 data.type,
         "isDeferred":           data.isDeferred,
         "matchType":            data.matchType,
@@ -343,13 +342,9 @@ actor ULinkPendingQueue {
                 reject("DEFERRED_LINK_ERROR", error.localizedDescription, error)
             }
 
-        case .getInitialDeepLink(let resolve, let reject):
-            do {
-                let data = await sdk.getInitialDeepLink()
-                resolve(data.map { resolvedDataToMap($0) as [String: Any?] })
-            } catch {
-                reject("GET_INITIAL_DEEP_LINK_ERROR", error.localizedDescription, error)
-            }
+        case .getInitialDeepLink(let resolve, _):
+            let data = await sdk.getInitialDeepLink()
+            resolve(data.map { resolvedDataToMap($0) as [String: Any?] })
 
         case .getInitialUri(let resolve, _):
             resolve(sdk.getInitialUrl()?.absoluteString)
@@ -391,6 +386,7 @@ actor ULinkPendingQueue {
 
         case .dispose(let resolve, _):
             sdk.dispose()
+            module.didDispose()
             resolve(())
         }
     }

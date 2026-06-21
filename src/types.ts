@@ -73,7 +73,7 @@ export enum SessionState {
 export interface ULinkLogEntry {
   level: string;
   message: string;
-  timestamp?: string;
+  timestamp?: number;   // epoch milliseconds (Int64 from native, serialised as JS number)
 }
 
 export type ULinkEventsMap = {
