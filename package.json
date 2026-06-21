@@ -4,6 +4,18 @@
   "description": "Official ULink deep linking SDK for React Native and Expo.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
+  "files": [
+    "build",
+    "ios",
+    "android/src",
+    "android/build.gradle",
+    "plugin/build/index.js",
+    "plugin/build/index.d.ts",
+    "app.plugin.js",
+    "expo-module.config.json",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "expo-module build && tsc --build plugin",
     "build:plugin": "tsc --build plugin",
