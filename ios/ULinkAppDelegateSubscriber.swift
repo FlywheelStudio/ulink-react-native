@@ -10,11 +10,11 @@
 //   launchOptions and buffers it via ULinkIncomingLinkBuffer.shared.
 //
 // All URLs are forwarded to ULinkIncomingLinkBuffer.shared.buffer(_:).
-// If the SDK is already initialised the buffer forwards immediately via
-// ULink.processULinkUrl(_:); otherwise the URL is held until
-// ULinkReactNativeModule calls ULinkIncomingLinkBuffer.shared.drain(sdk:) after
-// initialize() succeeds.  This satisfies the global-constraints.md requirement
-// that resolved links reach JS via onDynamicLink / onUnifiedLink events.
+// The buffer holds URLs until BOTH gates are open:
+//   1. SDK ready  — ULinkReactNativeModule calls setReady() after initialize()
+//   2. JS observing — OnStartObserving fires when the first JS listener attaches
+// When both gates are open, buffered URLs are flushed via handleDeepLinkAsync()
+// which emits on the SDK's Combine streams → onDynamicLink / onUnifiedLink events.
 
 import ExpoModulesCore
 import UIKit

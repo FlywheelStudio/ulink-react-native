@@ -31,6 +31,15 @@ public class ULinkReactNativeModule: Module {
         // ── Events ──────────────────────────────────────────────────────────
         Events("onDynamicLink", "onUnifiedLink", "onReinstallDetected", "onLog")
 
+        // ── Listener gate for cold-start buffer ─────────────────────────────
+        // Fires when the FIRST JS listener attaches to any event on this module.
+        // At this point it is safe to flush buffered cold-start links because JS
+        // has called addListener, which means the onDynamicLink/onUnifiedLink
+        // callbacks are registered.
+        OnStartObserving {
+            Task { await ULinkIncomingLinkBuffer.shared.setObserving() }
+        }
+
         // ── initialize ──────────────────────────────────────────────────────
         AsyncFunction("initialize") { (configMap: [String: Any], promise: Promise) in
             // If already initialised, resolve immediately (idempotent).
@@ -58,11 +67,10 @@ public class ULinkReactNativeModule: Module {
                     // Drain the method-call queue first so SDK event subscriptions
                     // are live before any buffered link is processed.
                     await self.queue.markReady(sdk, module: self)
-                    // Drain any URLs buffered by the AppDelegate subscriber before
-                    // this initialize() call completed (cold-start universal links,
-                    // custom-scheme URLs).  processULinkUrl() emits on the Combine
-                    // streams already wired above, so events reach JS correctly.
-                    await ULinkIncomingLinkBuffer.shared.drain(sdk: sdk)
+                    // Mark the buffer as SDK-ready.  Buffered cold-start URLs are
+                    // flushed via handleDeepLinkAsync (emits on Combine streams) once
+                    // BOTH this gate AND the JS-listener gate (setObserving) are open.
+                    await ULinkIncomingLinkBuffer.shared.setReady(sdk)
                     self.initTask = nil   // fix #6: clear task handle after successful init
                     promise.resolve()
                 } catch {
@@ -360,6 +368,8 @@ public class ULinkReactNativeModule: Module {
         self.ulink = nil
         self.cancellables.removeAll()
         self.initTask = nil
+        // Reset the link buffer so stale SDK reference can't be used after dispose.
+        Task { await ULinkIncomingLinkBuffer.shared.reset() }
     }
 
     // MARK: - Combine stream subscriptions

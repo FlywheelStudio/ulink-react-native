@@ -181,44 +181,83 @@ func parseParameters(_ map: [String: Any]) throws -> ULinkParameters {
 // ---------------------------------------------------------------------------
 
 /// Singleton actor that buffers URLs delivered by the AppDelegate subscriber
-/// (universal links and custom-scheme URLs) that arrive before `ULink.initialize()`
-/// has been called by JS.
+/// (universal links and custom-scheme URLs) until BOTH conditions are true:
+///   1. The SDK has been initialised (`setReady` called from `initialize()`).
+///   2. A JS listener is attached (`setObserving` called from `OnStartObserving`).
+///
+/// This two-gate approach prevents the cold-start race where a link is emitted
+/// before JS has called `ULink.onDynamicLink(cb)` / `ULink.onUnifiedLink(cb)`.
 ///
 /// Usage pattern:
 ///   AppDelegate subscriber:
 ///     Task { await ULinkIncomingLinkBuffer.shared.buffer(url) }
 ///
-///   Module after successful initialize():
-///     await ULinkIncomingLinkBuffer.shared.drain(sdk: sdk)
+///   Module (inside initialize(), after subscribeStreams + markReady):
+///     await ULinkIncomingLinkBuffer.shared.setReady(sdk)
 ///
-/// After drain(), every subsequent `buffer()` call is forwarded immediately.
+///   Module definition():
+///     OnStartObserving { Task { await ULinkIncomingLinkBuffer.shared.setObserving() } }
+///
+///   Module didDispose():
+///     Task { await ULinkIncomingLinkBuffer.shared.reset() }
 actor ULinkIncomingLinkBuffer {
 
     static let shared = ULinkIncomingLinkBuffer()
     private init() {}
 
-    private var buffered: [URL] = []
     private var sdk: ULink? = nil
+    private var observing: Bool = false
+    private var buffered: [URL] = []
+
+    /// Called by the module after `ULink.initialize()` succeeds and Combine
+    /// streams are live.  Stores the SDK reference and flushes if a JS listener
+    /// is already attached.
+    func setReady(_ sdk: ULink) async {
+        self.sdk = sdk
+        await flushIfPossible()
+    }
+
+    /// Called when the first JS listener attaches (via `OnStartObserving`).
+    /// Marks the module as observed and flushes if the SDK is also ready.
+    func setObserving() async {
+        observing = true
+        await flushIfPossible()
+    }
 
     /// Called by the AppDelegate subscriber with each incoming URL.
-    /// Buffers the URL when the SDK is not yet ready; forwards immediately otherwise.
+    /// Emits immediately if both gates are open; otherwise buffers.
     func buffer(_ url: URL) async {
-        if let sdk = sdk {
-            await sdk.processULinkUrl(url)
+        if let sdk = sdk, observing {
+            do {
+                try await sdk.handleDeepLinkAsync(url: url)
+            } catch {
+                // Swallow: no JS Promise to reject for AppDelegate-sourced URLs.
+            }
         } else {
             buffered.append(url)
         }
     }
 
-    /// Called by the module after `ULink.initialize()` succeeds.
-    /// Replays all buffered URLs through the now-live SDK instance.
-    func drain(sdk: ULink) async {
-        self.sdk = sdk
+    /// Drains all buffered URLs through the SDK when both gates are open.
+    private func flushIfPossible() async {
+        guard let sdk = sdk, observing else { return }
         let pending = buffered
         buffered.removeAll()
         for url in pending {
-            await sdk.processULinkUrl(url)
+            do {
+                try await sdk.handleDeepLinkAsync(url: url)
+            } catch {
+                // Swallow: background delivery; no Promise to reject.
+            }
         }
+    }
+
+    /// Resets the buffer on module dispose so a stale SDK reference is never
+    /// used after the module is torn down.  `observing` is intentionally kept
+    /// so that a re-init + already-attached listener still flushes correctly.
+    func reset() async {
+        sdk = nil
+        buffered.removeAll()
     }
 }
 
