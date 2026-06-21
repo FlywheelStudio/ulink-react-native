@@ -24,7 +24,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      ["../app.plugin", { "scheme": "ulinkexample", "domains": ["ulinkexample.shared.ly"] }]
+      ["../app.plugin", { "scheme": "ulinksdkexample", "domains": ["shadd.shared.ly"] }]
     ]
   }
 }
