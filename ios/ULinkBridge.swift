@@ -56,7 +56,6 @@ func resolvedDataToMap(_ data: ULinkResolvedData) -> [String: Any?] {
         "type":                 data.type,
         "isDeferred":           data.isDeferred,
         "matchType":            data.matchType,
-        "resolvedAt":           data.resolvedAt.map { $0.timeIntervalSince1970 },
     ]
 }
 

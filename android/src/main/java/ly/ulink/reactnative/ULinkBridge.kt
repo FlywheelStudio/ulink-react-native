@@ -202,25 +202,34 @@ object ULinkBridge {
         obj.entries.associate { (k, v) -> k to jsonElementToAny(v) }
 
     // Convert a plain Map<String, Any?> to a JsonObject for ULinkParameters fields.
+    // Handles nested Maps → JsonObject and Lists/arrays → JsonArray recursively.
     // Integral numbers are preserved as Long/Int to avoid lossy 1 → 1.0 coercion.
     private fun mapToJsonObject(map: Map<String, Any?>): JsonObject = buildJsonObject {
         map.forEach { (key, value) ->
-            when (value) {
-                null -> put(key, JsonNull)
-                is String -> put(key, JsonPrimitive(value))
-                is Boolean -> put(key, JsonPrimitive(value))
-                is Int -> put(key, JsonPrimitive(value))
-                is Long -> put(key, JsonPrimitive(value))
-                is Float -> put(key, JsonPrimitive(value))
-                is Double -> put(key, JsonPrimitive(value))
-                is Number -> {
-                    // Coerce unknown Number subtypes: preserve integral value if possible.
-                    val l = value.toLong()
-                    if (l.toDouble() == value.toDouble()) put(key, JsonPrimitive(l))
-                    else put(key, JsonPrimitive(value.toDouble()))
-                }
-                else -> put(key, JsonPrimitive(value.toString()))
-            }
+            put(key, anyToJsonElement(value))
         }
+    }
+
+    private fun anyToJsonElement(value: Any?): JsonElement = when (value) {
+        null -> JsonNull
+        is JsonElement -> value
+        is Boolean -> JsonPrimitive(value)
+        is String -> JsonPrimitive(value)
+        is Int -> JsonPrimitive(value)
+        is Long -> JsonPrimitive(value)
+        is Float -> JsonPrimitive(value)
+        is Double -> JsonPrimitive(value)
+        is Number -> {
+            val l = value.toLong()
+            if (l.toDouble() == value.toDouble()) JsonPrimitive(l)
+            else JsonPrimitive(value.toDouble())
+        }
+        is Map<*, *> -> {
+            @Suppress("UNCHECKED_CAST")
+            mapToJsonObject(value as Map<String, Any?>)
+        }
+        is List<*> -> JsonArray(value.map { anyToJsonElement(it) })
+        is Array<*> -> JsonArray(value.map { anyToJsonElement(it) })
+        else -> JsonPrimitive(value.toString())
     }
 }

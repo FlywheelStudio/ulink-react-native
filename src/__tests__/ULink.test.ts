@@ -29,7 +29,7 @@ describe('ULink methods', () => {
   });
 
   it('returns createLink response', async () => {
-    const res = await ULink.createLink({ slug: 'abc' });
+    const res = await ULink.createLink({ domain: 'shadd.shared.ly', slug: 'abc' });
     expect(res.url).toBe('https://x.ulink.ly/abc');
   });
 

@@ -12,30 +12,36 @@ export class ULinkError extends Error {
   }
 }
 
+/** Wraps a native promise so any rejection is re-thrown as ULinkError. */
+async function wrap<T>(p: Promise<T>): Promise<T> {
+  try { return await p; }
+  catch (e: any) { throw new ULinkError(e?.message ?? String(e), e?.code ?? e?.name); }
+}
+
 function toSessionState(value: string): SessionState {
   const match = (Object.values(SessionState) as string[]).includes(value);
   return match ? (value as SessionState) : SessionState.IDLE;
 }
 
 export class ULinkSDK {
-  initialize(config: ULinkConfig): Promise<void> { return ULinkModule.initialize(config); }
-  createLink(parameters: ULinkParameters): Promise<ULinkResponse> { return ULinkModule.createLink(parameters); }
-  resolveLink(url: string): Promise<ULinkResponse> { return ULinkModule.resolveLink(url); }
-  processULink(url: string): Promise<ULinkResolvedData | null> { return ULinkModule.processULink(url); }
-  checkDeferredLink(): Promise<void> { return ULinkModule.checkDeferredLink(); }
-  getInitialDeepLink(): Promise<ULinkResolvedData | null> { return ULinkModule.getInitialDeepLink(); }
-  getInitialUri(): Promise<string | null> { return ULinkModule.getInitialUri(); }
-  setInitialUri(uri: string): Promise<void> { return ULinkModule.setInitialUri(uri); }
-  getLastLinkData(): Promise<ULinkResolvedData | null> { return ULinkModule.getLastLinkData(); }
-  getInstallationId(): Promise<string | null> { return ULinkModule.getInstallationId(); }
-  getInstallationInfo(): Promise<ULinkInstallationInfo | null> { return ULinkModule.getInstallationInfo(); }
-  isReinstall(): Promise<boolean> { return ULinkModule.isReinstall(); }
-  getCurrentSessionId(): Promise<string | null> { return ULinkModule.getCurrentSessionId(); }
-  hasActiveSession(): Promise<boolean> { return ULinkModule.hasActiveSession(); }
-  async getSessionState(): Promise<SessionState> { return toSessionState(await ULinkModule.getSessionState()); }
-  endSession(): Promise<void> { return ULinkModule.endSession(); }
+  initialize(config: ULinkConfig): Promise<void> { return wrap(ULinkModule.initialize(config)); }
+  createLink(parameters: ULinkParameters): Promise<ULinkResponse> { return wrap(ULinkModule.createLink(parameters)); }
+  resolveLink(url: string): Promise<ULinkResponse> { return wrap(ULinkModule.resolveLink(url)); }
+  processULink(url: string): Promise<ULinkResolvedData | null> { return wrap(ULinkModule.processULink(url)); }
+  checkDeferredLink(): Promise<void> { return wrap(ULinkModule.checkDeferredLink()); }
+  getInitialDeepLink(): Promise<ULinkResolvedData | null> { return wrap(ULinkModule.getInitialDeepLink()); }
+  getInitialUri(): Promise<string | null> { return wrap(ULinkModule.getInitialUri()); }
+  setInitialUri(uri: string): Promise<void> { return wrap(ULinkModule.setInitialUri(uri)); }
+  getLastLinkData(): Promise<ULinkResolvedData | null> { return wrap(ULinkModule.getLastLinkData()); }
+  getInstallationId(): Promise<string | null> { return wrap(ULinkModule.getInstallationId()); }
+  getInstallationInfo(): Promise<ULinkInstallationInfo | null> { return wrap(ULinkModule.getInstallationInfo()); }
+  isReinstall(): Promise<boolean> { return wrap(ULinkModule.isReinstall()); }
+  getCurrentSessionId(): Promise<string | null> { return wrap(ULinkModule.getCurrentSessionId()); }
+  hasActiveSession(): Promise<boolean> { return wrap(ULinkModule.hasActiveSession()); }
+  async getSessionState(): Promise<SessionState> { return toSessionState(await wrap(ULinkModule.getSessionState())); }
+  endSession(): Promise<void> { return wrap(ULinkModule.endSession()); }
   /** Advanced/teardown only. Do NOT call on component unmount or fast-refresh. */
-  dispose(): Promise<void> { return ULinkModule.dispose(); }
+  dispose(): Promise<void> { return wrap(ULinkModule.dispose()); }
 
   onDynamicLink(listener: ULinkEventsMap['onDynamicLink']): EventSubscription {
     return ULinkModule.addListener('onDynamicLink', listener);

@@ -25,6 +25,10 @@ export interface ULinkParameters {
   domain: string;
   type?: ULinkLinkType;
   slug?: string;
+  /** Optional display label shown in the ULink dashboard. */
+  name?: string;
+  /** Idempotency key — if a link with this externalId already exists on the domain it is returned instead of creating a duplicate. */
+  externalId?: string;
   iosUrl?: string;
   androidUrl?: string;
   iosFallbackUrl?: string;
@@ -76,6 +80,7 @@ export interface ULinkLogEntry {
   level: string;
   message: string;
   timestamp?: number;   // epoch milliseconds (Int64 from native, serialised as JS number)
+  tag?: string;
 }
 
 export type ULinkEventsMap = {

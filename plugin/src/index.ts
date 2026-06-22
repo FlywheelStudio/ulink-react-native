@@ -8,7 +8,7 @@ import {
 
 export interface ULinkPluginProps {
   scheme: string;
-  domains: string[];
+  domains?: string[];
 }
 
 const withULink: ConfigPlugin<ULinkPluginProps> = (config, props) => {

@@ -258,7 +258,8 @@ class ULinkReactNativeModule : Module() {
                     mapOf(
                         "level" to entry.level,
                         "message" to entry.message,
-                        "timestamp" to entry.timestamp  // Long → JS number
+                        "timestamp" to entry.timestamp,  // Long → JS number
+                        "tag" to entry.tag
                     )
                 )
             }

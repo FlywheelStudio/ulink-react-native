@@ -211,8 +211,12 @@ function App() {
 // Create a shareable link
 async function shareLink() {
   const response = await ULink.createLink({
+    domain: 'shadd.shared.ly',   // required: your registered ULink subdomain
     type: 'dynamic',
     slug: 'my-promo',
+    // externalId deduplicates repeat calls — if a link with this ID already exists
+    // on the domain, the existing link is returned instead of creating a new one.
+    externalId: 'promo-launch-2024',
     iosFallbackUrl: 'https://apps.apple.com/app/id123456789',
     androidFallbackUrl: 'https://play.google.com/store/apps/details?id=com.myapp',
     fallbackUrl: 'https://myapp.com/promo',
@@ -246,7 +250,7 @@ async function openLink(url: string) {
 
 Initializes the native SDK. **Must be called and awaited before any other method.**
 
-- On Android, calls made before `initialize()` resolves are rejected with an `ULinkError`.
+- On Android, calls made before `initialize()` resolves are rejected with a `ULinkError`.
 - On iOS, calls are queued and flushed after init completes — but always `await` init first for predictable behavior.
 - `initialize()` is idempotent: subsequent calls are no-ops.
 
@@ -369,8 +373,11 @@ interface ULinkConfig {
 
 ```ts
 interface ULinkParameters {
+  domain: string;                          // Required. Your registered ULink subdomain (e.g. "myapp.shared.ly").
   type?: 'dynamic' | 'unified';
   slug?: string;
+  name?: string;                           // Optional display label shown in the ULink dashboard.
+  externalId?: string;                     // Optional idempotency key — dedupes repeat createLink calls on the same domain.
   iosUrl?: string;
   androidUrl?: string;
   iosFallbackUrl?: string;
@@ -452,6 +459,7 @@ interface ULinkLogEntry {
   level: string;
   message: string;
   timestamp?: number;  // epoch milliseconds
+  tag?: string;
 }
 ```
 
@@ -461,7 +469,7 @@ interface ULinkLogEntry {
 
 ### Always `await ULink.initialize(...)` first
 
-`initialize()` is async. Call it at app startup (before mounting any screen that handles deep links) and always `await` it. On Android, any method called before `initialize()` resolves will reject with an `ULinkError`. On iOS, calls are queued, but order is undefined — `await` init for reliable behavior on both platforms.
+`initialize()` is async. Call it at app startup (before mounting any screen that handles deep links) and always `await` it. On Android, any method called before `initialize()` resolves will reject with a `ULinkError`. On iOS, calls are queued, but order is undefined — `await` init for reliable behavior on both platforms.
 
 ### iOS deferred deep linking is probabilistic
 
