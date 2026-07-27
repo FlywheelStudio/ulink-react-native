@@ -2,6 +2,16 @@
 
 All notable changes to `@ulinkly/react-native` will be documented in this file.
 
+## 0.1.1
+
+- Bump the pinned native Android SDK from `ly.ulink:ulink-sdk:1.1.0` to `1.1.4`, picking up four releases of Android-only fixes. iOS is unaffected.
+  - Correct `X-ULink-Client-Version` in backend telemetry; the 1.1.0 artifact reported `1.0.11` on every call (1.1.1).
+  - Dynamic links are no longer emitted twice when the app is already installed (1.1.2).
+  - The deferred-match endpoint honours the configured `baseUrl` instead of always calling `https://api.ulink.ly` (1.1.3).
+  - The "retry bootstrap on next foreground" recovery is now reachable, so a single transient network error at cold start no longer leaves the SDK degraded for the whole process lifetime (1.1.3).
+  - Transient pre-send network failures (DNS, connect, no route) are retried with exponential backoff; failures that may already have reached the server, such as read timeouts, are deliberately not retried so sessions and installations cannot be duplicated (1.1.4).
+  - The deferred-link check is re-attempted once bootstrap recovers, serialized against overlapping foregrounds, and retried until the request completes (1.1.4).
+
 ## 0.1.0 — 2026-06-21
 
 Initial release.
