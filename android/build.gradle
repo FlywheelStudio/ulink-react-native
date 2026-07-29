@@ -30,7 +30,7 @@ repositories {
 dependencies {
   implementation project(':expo-modules-core')
   // Maven coordinate — keeps Play Install Referrer transitive (never a vendored .aar)
-  implementation 'ly.ulink:ulink-sdk:1.1.4'
+  implementation 'ly.ulink:ulink-sdk:1.2.0'
   implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
   // kotlinx-serialization-json is 'runtime' scope in the SDK POM so it is not on our
   // compile classpath by default.  Declare it explicitly so ULinkBridge can import
