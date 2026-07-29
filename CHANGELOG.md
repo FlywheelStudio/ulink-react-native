@@ -2,6 +2,16 @@
 
 All notable changes to `@ulinkly/react-native` will be documented in this file.
 
+## 0.1.2
+
+- Bump the pinned native Android SDK from `ly.ulink:ulink-sdk:1.1.4` to `1.2.0`. iOS is unaffected.
+  - Deep links are no longer lost when they arrive while the SDK is still starting up. A link reaching the SDK before bootstrap finished was rejected outright, and because the intent had already been marked as handled nothing retried it — so cold starts launched by tapping a link, the most common case, dropped the link. Measured on a device: intent processed 0.9s after process start, bootstrap completed 2.2s later, listener never fired.
+  - The deferred-link check had the same race. It runs once per install, so losing it lost the install's attribution permanently.
+  - A failure while the SDK was setting up could leave bootstrap in a non-terminal state, parking every later deep link for the life of the process.
+  - Shutting the SDK down is no longer reported as a deep-link failure, and no longer silently stops delivery to the log stream.
+  - Disposing the SDK now actually ends the active session; the request was previously cancelled before it was sent.
+  - Re-initialising after disposing returns a working instance instead of the disposed one, whose background work silently did nothing.
+
 ## 0.1.1
 
 - Bump the pinned native Android SDK from `ly.ulink:ulink-sdk:1.1.0` to `1.1.4`, picking up four releases of Android-only fixes. iOS is unaffected.
