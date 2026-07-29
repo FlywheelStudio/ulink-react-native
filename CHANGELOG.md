@@ -2,6 +2,13 @@
 
 All notable changes to `@ulinkly/react-native` will be documented in this file.
 
+## 0.1.3
+
+- Bump the pinned native iOS SDK to `ULinkSDK` 1.2.0. Android is unaffected.
+  - Deep links are no longer lost on iOS when they arrive while the SDK is still starting up. A host launched by a universal link hands the link to the SDK moments after initialization begins, and link resolution rejected anything arriving before bootstrap finished — the error was swallowed into a log line, so the launch link was dropped silently.
+  - A bootstrap that failed at cold start now always reaches a terminal state, so later links fail fast instead of waiting for a completion that never comes.
+  - Note: the CocoaPods constraint was `~> 1.1.1`, which resolves to `>= 1.1.1, < 1.2.0` — iOS hosts could not pick up 1.2.0 until this bump.
+
 ## 0.1.2
 
 - Bump the pinned native Android SDK from `ly.ulink:ulink-sdk:1.1.4` to `1.2.0`. iOS is unaffected.
