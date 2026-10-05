@@ -341,6 +341,32 @@ enum PendingCall {
         resolve: (Void) -> Void,
         reject:  (String, String, Error?) -> Void
     )
+
+    /// The rejection continuation of any case, used when initialization fails
+    /// and the call can never run.
+    var reject: (String, String, Error?) -> Void {
+        switch self {
+        case .initialize(_, _, let reject),
+             .createLink(_, _, let reject),
+             .resolveLink(_, _, let reject),
+             .processULink(_, _, let reject),
+             .setInitialUri(_, _, let reject):
+            return reject
+        case .checkDeferredLink(_, let reject),
+             .getInitialDeepLink(_, let reject),
+             .getInitialUri(_, let reject),
+             .getLastLinkData(_, let reject),
+             .getInstallationId(_, let reject),
+             .getInstallationInfo(_, let reject),
+             .isReinstall(_, let reject),
+             .getCurrentSessionId(_, let reject),
+             .hasActiveSession(_, let reject),
+             .getSessionState(_, let reject),
+             .endSession(_, let reject),
+             .dispose(_, let reject):
+            return reject
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -358,6 +384,9 @@ actor ULinkPendingQueue {
     private var pending: [PendingCall] = []
     private var ready = false
     private var ulink: ULink? = nil
+    /// Set when the last initialize() failed, so calls that arrive afterwards
+    /// are rejected instead of parked until a later initialize().
+    private var failure: (code: String, message: String)? = nil
 
     /// Called by the module after `ULink.initialize(config:)` returns successfully.
     func markReady(_ sdk: ULink, module: ULinkReactNativeModule) async {
@@ -370,10 +399,30 @@ actor ULinkPendingQueue {
         }
     }
 
+    /// Called by the module when `initialize()` fails without creating an SDK
+    /// instance. Rejects every queued call; otherwise their Promises would never
+    /// settle and JS awaiting them would hang.
+    func markFailed(code: String, message: String) {
+        failure = (code, message)
+        let calls = pending
+        pending.removeAll()
+        for call in calls {
+            call.reject(code, message, nil)
+        }
+    }
+
+    /// Called by the module when a new `initialize()` starts, so calls queue
+    /// behind it again.
+    func clearFailure() {
+        failure = nil
+    }
+
     /// Enqueue a call.  If already ready, execute immediately (no queue).
     func enqueue(_ call: PendingCall, module: ULinkReactNativeModule) async {
-        if ready, let sdk = ulink {
+        if ready, ulink != nil {
             await execute(call, module: module)
+        } else if let failure = failure {
+            call.reject(failure.code, failure.message, nil)
         } else {
             pending.append(call)
         }

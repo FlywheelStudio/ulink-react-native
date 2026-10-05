@@ -2,6 +2,13 @@
 
 All notable changes to `@ulinkly/react-native` will be documented in this file.
 
+## 0.1.6
+
+- iOS: a failed startup request no longer rejects `initialize()` or leaves other calls hanging. When `POST /sdk/bootstrap` returned a non-2xx status (a 503 under load, a 403 at a plan limit) or the network was unavailable, `initialize()` rejected with `INITIALIZATION_ERROR`, and every call made before it settled (including a second `initialize()`) stayed queued and its Promise never settled.
+  - The module now matches Android: `initialize()` resolves, event subscriptions are set up, queued calls run, and the native SDK retries the request when the app returns to the foreground and before it handles a link.
+  - If initialization fails without creating the native SDK (for example an invalid configuration), `initialize()` still rejects, and queued calls are now rejected with the same error instead of hanging.
+- Raise the pinned native iOS SDK from `ULinkSDK ~> 1.2.0` to `~> 1.2.2`, which adds `ULink.isInitialized` (used above) and fixes a crash when a deep link arrives before initialization finishes.
+
 ## 0.1.5
 
 - Bump the pinned native Android SDK from `ly.ulink:ulink-sdk:1.2.2` to `1.2.3`. iOS is unaffected.

@@ -1,5 +1,5 @@
 // ULinkReactNativeModule.swift
-// Expo Module that wraps the ULink iOS SDK (ULinkSDK ~> 1.1.1).
+// Expo Module that wraps the ULink iOS SDK (ULinkSDK ~> 1.2.2).
 //
 // Design rules (from global-constraints.md):
 //   - Module name: "ULinkReactNative"
@@ -59,9 +59,23 @@ public class ULinkReactNativeModule: Module {
             }
 
             self.initTask = Task {
+                await self.queue.clearFailure()
                 do {
                     let config = try parseConfig(configMap)
-                    let sdk = try await ULink.initialize(config: config)
+                    let sdk: ULink
+                    do {
+                        sdk = try await ULink.initialize(config: config)
+                    } catch where ULink.isInitialized {
+                        // The native iOS SDK throws when bootstrap fails (non-2xx
+                        // such as a 503 under load shedding or a 403 at the plan's
+                        // MAU cap, or no network), but the instance exists and
+                        // retries bootstrap on the next foreground and before
+                        // handling a link, as the Android SDK does. Continue in
+                        // that degraded state so the app is not blocked and
+                        // queued calls and links are not parked forever.
+                        NSLog("[ULink] Initialization degraded, bootstrap will be retried: %@", error.localizedDescription)
+                        sdk = ULink.shared
+                    }
                     self.ulink = sdk
                     self.subscribeStreams(sdk)
                     // Drain the method-call queue first so SDK event subscriptions
@@ -75,6 +89,7 @@ public class ULinkReactNativeModule: Module {
                     promise.resolve()
                 } catch {
                     self.initTask = nil
+                    await self.queue.markFailed(code: "INITIALIZATION_ERROR", message: error.localizedDescription)
                     promise.reject("INITIALIZATION_ERROR", error.localizedDescription)
                 }
             }
