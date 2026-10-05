@@ -2,6 +2,13 @@
 
 All notable changes to `@ulinkly/react-native` will be documented in this file.
 
+## 0.1.4
+
+- Bump the pinned native Android SDK from `ly.ulink:ulink-sdk:1.2.0` to `1.2.2`. iOS is unaffected.
+  - The SDK no longer replaces the host app's launcher icon. The 1.2.0 and 1.2.1 AARs shipped Android Studio template launcher icons, including a `mipmap-anydpi-v26/ic_launcher` adaptive icon. Hosts without their own adaptive icon showed the SDK's icon on Android 8+ (1.2.2).
+  - Bootstrap is retried as soon as the device regains a network, instead of waiting for the next foreground (1.2.1).
+  - Foregrounding the app while the cold-start bootstrap is still in flight no longer fires a duplicate bootstrap (1.2.1).
+
 ## 0.1.3
 
 - Bump the pinned native iOS SDK to `ULinkSDK` 1.2.0. Android is unaffected.
