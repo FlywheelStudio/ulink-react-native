@@ -1,5 +1,5 @@
 // ULinkReactNativeModule.swift
-// Expo Module that wraps the ULink iOS SDK (ULinkSDK ~> 1.2.2).
+// Expo Module that wraps the ULink iOS SDK (ULinkSDK ~> 1.2.3).
 //
 // Design rules (from global-constraints.md):
 //   - Module name: "ULinkReactNative"
@@ -69,8 +69,8 @@ public class ULinkReactNativeModule: Module {
                         // The native iOS SDK throws when bootstrap fails (non-2xx
                         // such as a 503 under load shedding or a 403 at the plan's
                         // MAU cap, or no network), but the instance exists and
-                        // retries bootstrap on the next foreground and before
-                        // handling a link, as the Android SDK does. Continue in
+                        // retries bootstrap on the next foreground and before any
+                        // link resolution or API call, as the Android SDK does. Continue in
                         // that degraded state so the app is not blocked and
                         // queued calls and links are not parked forever.
                         NSLog("[ULink] Initialization degraded, bootstrap will be retried: %@", error.localizedDescription)
@@ -88,8 +88,11 @@ public class ULinkReactNativeModule: Module {
                     self.initTask = nil   // fix #6: clear task handle after successful init
                     promise.resolve()
                 } catch {
-                    self.initTask = nil
+                    // Reject queued calls before clearing initTask. A new
+                    // initialize() starts only once initTask is nil; its
+                    // clearFailure() must not run ahead of this markFailed().
                     await self.queue.markFailed(code: "INITIALIZATION_ERROR", message: error.localizedDescription)
+                    self.initTask = nil
                     promise.reject("INITIALIZATION_ERROR", error.localizedDescription)
                 }
             }
