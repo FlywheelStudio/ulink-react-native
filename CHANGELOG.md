@@ -2,6 +2,12 @@
 
 All notable changes to `@ulinkly/react-native` will be documented in this file.
 
+## 0.1.5
+
+- Bump the pinned native Android SDK from `ly.ulink:ulink-sdk:1.2.2` to `1.2.3`. iOS is unaffected.
+  - The Android library manifest no longer declares `<application>` attributes (`android:theme`, `allowBackup`, `dataExtractionRules`, `fullBackupContent`), and the library no longer packages template theme, color, `app_name` string or backup-rule resources. A host app that did not set these itself inherited the SDK's values.
+- 0.1.4 was tagged but never published to npm; 0.1.5 includes its changes.
+
 ## 0.1.4
 
 - Bump the pinned native Android SDK from `ly.ulink:ulink-sdk:1.2.0` to `1.2.2`. iOS is unaffected.
