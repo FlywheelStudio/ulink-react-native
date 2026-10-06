@@ -22,6 +22,10 @@ public class ULinkReactNativeModule: Module {
     private var cancellables = Set<AnyCancellable>()
     private let queue = ULinkPendingQueue()
     private var initTask: Task<Void, Error>? = nil
+    /// Set synchronously before the init Task starts and cleared inside it, so
+    /// a Task that finishes before `initTask` is assigned cannot leave a stale
+    /// "init in flight" marker behind (initTask is only the handle).
+    private var initInFlight = false
 
     // MARK: - Module definition
 
@@ -48,7 +52,7 @@ public class ULinkReactNativeModule: Module {
                 return
             }
             // If a concurrent init is in flight, queue behind it.
-            if self.initTask != nil {
+            if self.initInFlight {
                 let call = PendingCall.initialize(
                     config: configMap,
                     resolve: { promise.resolve() },
@@ -58,8 +62,10 @@ public class ULinkReactNativeModule: Module {
                 return
             }
 
+            self.initInFlight = true
             self.initTask = Task {
                 await self.queue.clearFailure()
+                var degradedReason: String?
                 do {
                     let config = try parseConfig(configMap)
                     let sdk: ULink
@@ -74,25 +80,43 @@ public class ULinkReactNativeModule: Module {
                         // that degraded state so the app is not blocked and
                         // queued calls and links are not parked forever.
                         NSLog("[ULink] Initialization degraded, bootstrap will be retried: %@", error.localizedDescription)
+                        degradedReason = error.localizedDescription
                         sdk = ULink.shared
                     }
                     self.ulink = sdk
+                    // Subscriptions first, so queued calls and buffered links emit
+                    // into live streams.
                     self.subscribeStreams(sdk)
-                    // Drain the method-call queue first so SDK event subscriptions
-                    // are live before any buffered link is processed.
-                    await self.queue.markReady(sdk, module: self)
-                    // Mark the buffer as SDK-ready.  Buffered cold-start URLs are
-                    // flushed via handleDeepLinkAsync (emits on Combine streams) once
-                    // BOTH this gate AND the JS-listener gate (setObserving) are open.
-                    await ULinkIncomingLinkBuffer.shared.setReady(sdk)
+                    if let reason = degradedReason {
+                        // The native failure log was emitted before onLog was wired.
+                        self.sendEvent("onLog", [
+                            "level":     "warning",
+                            "tag":       "ULink",
+                            "message":   "Initialization degraded, bootstrap will be retried: \(reason)",
+                            "timestamp": Int(Date().timeIntervalSince1970 * 1000),
+                        ])
+                    }
                     self.initTask = nil   // fix #6: clear task handle after successful init
+                    self.initInFlight = false
+                    // Resolve before draining. In degraded mode each queued network
+                    // call first waits for a bootstrap retry (up to Retry-After plus
+                    // the request), so initialize() must not wait for them.
                     promise.resolve()
+                    // Drain queued calls and mark the link buffer ready concurrently,
+                    // so a cold-start link is not held behind slow queued calls.
+                    // Buffered URLs flush via handleDeepLinkAsync once BOTH this gate
+                    // AND the JS-listener gate (setObserving) are open. Concurrent
+                    // callers share the native SDK's single bootstrap retry.
+                    async let drained: Void = self.queue.markReady(sdk, module: self)
+                    async let flushed: Void = ULinkIncomingLinkBuffer.shared.setReady(sdk)
+                    _ = await (drained, flushed)
                 } catch {
-                    // Reject queued calls before clearing initTask. A new
-                    // initialize() starts only once initTask is nil; its
+                    // Reject queued calls before clearing the in-flight marker. A
+                    // new initialize() starts only once it is cleared; its
                     // clearFailure() must not run ahead of this markFailed().
                     await self.queue.markFailed(code: "INITIALIZATION_ERROR", message: error.localizedDescription)
                     self.initTask = nil
+                    self.initInFlight = false
                     promise.rejectWithMessage("INITIALIZATION_ERROR", error.localizedDescription)
                 }
             }
@@ -386,6 +410,7 @@ public class ULinkReactNativeModule: Module {
         self.ulink = nil
         self.cancellables.removeAll()
         self.initTask = nil
+        self.initInFlight = false
         // Reset the link buffer so stale SDK reference can't be used after dispose.
         Task { await ULinkIncomingLinkBuffer.shared.reset() }
     }
@@ -437,21 +462,32 @@ public class ULinkReactNativeModule: Module {
 /// Expo builds the JS error message from `Exception.reason`, but
 /// `Promise.reject(_:_:)` only sets `description`, so every rejection reached
 /// JS as "undefined reason". This exception reports its message as the reason.
+///
+/// Only Expo SDK 56 needs this: 55 and earlier send `description` to JS, and 57+
+/// sets `reason` itself. Overriding `reason` gives the same text on all of them.
 final class ULinkRejection: Exception, @unchecked Sendable {
-    private let message: String
+    private let text: String
 
-    init(code: String, message: String) {
-        self.message = message
-        super.init(name: code, description: message, code: code)
+    init(code: String, message: String, file: String, line: UInt, function: String) {
+        self.text = message
+        super.init(name: code, description: message, code: code, file: file, line: line, function: function)
     }
 
     override var reason: String {
-        message
+        text
     }
 }
 
 extension Promise {
-    func rejectWithMessage(_ code: String, _ message: String) {
-        reject(ULinkRejection(code: code, message: message))
+    /// Rejects with the given code and message. The call site is recorded so
+    /// the "(at file:line)" suffix in the JS error points at the real reject.
+    func rejectWithMessage(
+        _ code: String,
+        _ message: String,
+        file: String = #fileID,
+        line: UInt = #line,
+        function: String = #function
+    ) {
+        reject(ULinkRejection(code: code, message: message, file: file, line: line, function: function))
     }
 }
