@@ -6,7 +6,6 @@ All notable changes to `@ulinkly/react-native` will be documented in this file.
 
 - iOS: calls made after `dispose()` no longer run against the disposed SDK. The pending-call queue kept its "ready" state and SDK reference after dispose, so a call made before the next `initialize()` ran immediately on the disposed instance. Such calls now wait for the next `initialize()`, like calls made before the first one.
 - iOS SDK errors now name the server's status and reason, e.g. `Bootstrap failed (status: 401): ... Invalid API key`, instead of `status: 0` or "ULinkHTTPError error 1", once the app resolves `ULinkSDK` 1.2.4 (allowed by the existing `~> 1.2.3` pin).
-- 0.1.6 was tagged but never published to npm; 0.1.7 includes its changes.
 
 ## 0.1.6
 
