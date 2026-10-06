@@ -1,5 +1,5 @@
 // ULinkReactNativeModule.swift
-// Expo Module that wraps the ULink iOS SDK (ULinkSDK ~> 1.1.1).
+// Expo Module that wraps the ULink iOS SDK (ULinkSDK ~> 1.2.3).
 //
 // Design rules (from global-constraints.md):
 //   - Module name: "ULinkReactNative"
@@ -22,6 +22,10 @@ public class ULinkReactNativeModule: Module {
     private var cancellables = Set<AnyCancellable>()
     private let queue = ULinkPendingQueue()
     private var initTask: Task<Void, Error>? = nil
+    /// Set synchronously before the init Task starts and cleared inside it, so
+    /// a Task that finishes before `initTask` is assigned cannot leave a stale
+    /// "init in flight" marker behind (initTask is only the handle).
+    private var initInFlight = false
 
     // MARK: - Module definition
 
@@ -48,34 +52,72 @@ public class ULinkReactNativeModule: Module {
                 return
             }
             // If a concurrent init is in flight, queue behind it.
-            if self.initTask != nil {
+            if self.initInFlight {
                 let call = PendingCall.initialize(
                     config: configMap,
                     resolve: { promise.resolve() },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
                 return
             }
 
+            self.initInFlight = true
             self.initTask = Task {
+                await self.queue.clearFailure()
+                var degradedReason: String?
                 do {
                     let config = try parseConfig(configMap)
-                    let sdk = try await ULink.initialize(config: config)
+                    let sdk: ULink
+                    do {
+                        sdk = try await ULink.initialize(config: config)
+                    } catch where ULink.isInitialized {
+                        // The native iOS SDK throws when bootstrap fails (non-2xx
+                        // such as a 503 under load shedding or a 403 at the plan's
+                        // MAU cap, or no network), but the instance exists and
+                        // retries bootstrap on the next foreground and before any
+                        // link resolution or API call, as the Android SDK does. Continue in
+                        // that degraded state so the app is not blocked and
+                        // queued calls and links are not parked forever.
+                        NSLog("[ULink] Initialization degraded, bootstrap will be retried: %@", error.localizedDescription)
+                        degradedReason = error.localizedDescription
+                        sdk = ULink.shared
+                    }
                     self.ulink = sdk
+                    // Subscriptions first, so queued calls and buffered links emit
+                    // into live streams.
                     self.subscribeStreams(sdk)
-                    // Drain the method-call queue first so SDK event subscriptions
-                    // are live before any buffered link is processed.
-                    await self.queue.markReady(sdk, module: self)
-                    // Mark the buffer as SDK-ready.  Buffered cold-start URLs are
-                    // flushed via handleDeepLinkAsync (emits on Combine streams) once
-                    // BOTH this gate AND the JS-listener gate (setObserving) are open.
-                    await ULinkIncomingLinkBuffer.shared.setReady(sdk)
+                    if let reason = degradedReason {
+                        // The native failure log was emitted before onLog was wired.
+                        self.sendEvent("onLog", [
+                            "level":     "warning",
+                            "tag":       "ULink",
+                            "message":   "Initialization degraded, bootstrap will be retried: \(reason)",
+                            "timestamp": Int(Date().timeIntervalSince1970 * 1000),
+                        ])
+                    }
                     self.initTask = nil   // fix #6: clear task handle after successful init
+                    self.initInFlight = false
+                    // Resolve before draining. In degraded mode each queued network
+                    // call first waits for a bootstrap retry (up to Retry-After plus
+                    // the request), so initialize() must not wait for them.
                     promise.resolve()
+                    // Drain queued calls and mark the link buffer ready concurrently,
+                    // so a cold-start link is not held behind slow queued calls.
+                    // Buffered URLs flush via handleDeepLinkAsync once BOTH this gate
+                    // AND the JS-listener gate (setObserving) are open. Concurrent
+                    // callers share the native SDK's single bootstrap retry.
+                    async let drained: Void = self.queue.markReady(sdk, module: self)
+                    async let flushed: Void = ULinkIncomingLinkBuffer.shared.setReady(sdk)
+                    _ = await (drained, flushed)
                 } catch {
+                    // Reject queued calls before clearing the in-flight marker. A
+                    // new initialize() starts only once it is cleared; its
+                    // clearFailure() must not run ahead of this markFailed().
+                    await self.queue.markFailed(code: "INITIALIZATION_ERROR", message: error.localizedDescription)
                     self.initTask = nil
-                    promise.reject("INITIALIZATION_ERROR", error.localizedDescription)
+                    self.initInFlight = false
+                    promise.rejectWithMessage("INITIALIZATION_ERROR", error.localizedDescription)
                 }
             }
         }
@@ -89,14 +131,14 @@ public class ULinkReactNativeModule: Module {
                         let resp = try await sdk.createLink(parameters: p)
                         promise.resolve(responseToMap(resp))
                     } catch {
-                        promise.reject("CREATE_LINK_ERROR", error.localizedDescription)
+                        promise.rejectWithMessage("CREATE_LINK_ERROR", error.localizedDescription)
                     }
                 }
             } else {
                 let call = PendingCall.createLink(
                     params:  paramsMap,
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -110,14 +152,14 @@ public class ULinkReactNativeModule: Module {
                         let resp = try await sdk.resolveLink(url: url)
                         promise.resolve(responseToMap(resp))
                     } catch {
-                        promise.reject("RESOLVE_LINK_ERROR", error.localizedDescription)
+                        promise.rejectWithMessage("RESOLVE_LINK_ERROR", error.localizedDescription)
                     }
                 }
             } else {
                 let call = PendingCall.resolveLink(
                     url:     url,
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -128,7 +170,7 @@ public class ULinkReactNativeModule: Module {
             if let sdk = self.ulink {
                 Task {
                     guard let linkUrl = URL(string: url) else {
-                        promise.reject("INVALID_URL", "Invalid URL: \(url)")
+                        promise.rejectWithMessage("INVALID_URL", "Invalid URL: \(url)")
                         return
                     }
                     do {
@@ -139,14 +181,14 @@ public class ULinkReactNativeModule: Module {
                             promise.resolve(nil as [String: Any?]?)
                         }
                     } catch {
-                        promise.reject("PROCESS_ULINK_ERROR", error.localizedDescription)
+                        promise.rejectWithMessage("PROCESS_ULINK_ERROR", error.localizedDescription)
                     }
                 }
             } else {
                 let call = PendingCall.processULink(
                     url:     url,
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -160,13 +202,13 @@ public class ULinkReactNativeModule: Module {
                         try await sdk.checkDeferredLinkAsync()
                         promise.resolve()
                     } catch {
-                        promise.reject("DEFERRED_LINK_ERROR", error.localizedDescription)
+                        promise.rejectWithMessage("DEFERRED_LINK_ERROR", error.localizedDescription)
                     }
                 }
             } else {
                 let call = PendingCall.checkDeferredLink(
                     resolve: { promise.resolve() },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -186,7 +228,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getInitialDeepLink(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -199,7 +241,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getInitialUri(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -212,13 +254,13 @@ public class ULinkReactNativeModule: Module {
                     sdk.setInitialUrl(url)
                     promise.resolve()
                 } else {
-                    promise.reject("INVALID_URL", "Invalid URI: \(uri)")
+                    promise.rejectWithMessage("INVALID_URL", "Invalid URI: \(uri)")
                 }
             } else {
                 let call = PendingCall.setInitialUri(
                     uri:     uri,
                     resolve: { promise.resolve() },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -236,7 +278,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getLastLinkData(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -249,7 +291,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getInstallationId(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -266,7 +308,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getInstallationInfo(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -279,7 +321,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.isReinstall(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -292,7 +334,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getCurrentSessionId(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -305,7 +347,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.hasActiveSession(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -318,7 +360,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getSessionState(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -334,7 +376,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.endSession(
                     resolve: { promise.resolve() },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -350,7 +392,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.dispose(
                     resolve: { promise.resolve() },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -368,6 +410,7 @@ public class ULinkReactNativeModule: Module {
         self.ulink = nil
         self.cancellables.removeAll()
         self.initTask = nil
+        self.initInFlight = false
         // Reset the link buffer so stale SDK reference can't be used after dispose.
         Task { await ULinkIncomingLinkBuffer.shared.reset() }
     }
@@ -411,5 +454,40 @@ public class ULinkReactNativeModule: Module {
                 ])
             }
             .store(in: &cancellables)
+    }
+}
+
+// MARK: - Rejections
+
+/// Expo builds the JS error message from `Exception.reason`, but
+/// `Promise.reject(_:_:)` only sets `description`, so every rejection reached
+/// JS as "undefined reason". This exception reports its message as the reason.
+///
+/// Only Expo SDK 56 needs this: 55 and earlier send `description` to JS, and 57+
+/// sets `reason` itself. Overriding `reason` gives the same text on all of them.
+final class ULinkRejection: Exception, @unchecked Sendable {
+    private let text: String
+
+    init(code: String, message: String, file: String, line: UInt, function: String) {
+        self.text = message
+        super.init(name: code, description: message, code: code, file: file, line: line, function: function)
+    }
+
+    override var reason: String {
+        text
+    }
+}
+
+extension Promise {
+    /// Rejects with the given code and message. The call site is recorded so
+    /// the "(at file:line)" suffix in the JS error points at the real reject.
+    func rejectWithMessage(
+        _ code: String,
+        _ message: String,
+        file: String = #fileID,
+        line: UInt = #line,
+        function: String = #function
+    ) {
+        reject(ULinkRejection(code: code, message: message, file: file, line: line, function: function))
     }
 }
