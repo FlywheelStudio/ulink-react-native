@@ -7,6 +7,7 @@ All notable changes to `@ulinkly/react-native` will be documented in this file.
 - iOS: a failed startup request no longer rejects `initialize()` or leaves other calls hanging. When `POST /sdk/bootstrap` returned a non-2xx status (a 503 under load, a 403 at a plan limit) or the network was unavailable, `initialize()` rejected with `INITIALIZATION_ERROR`, and every call made before it settled (including a second `initialize()`) stayed queued and its Promise never settled.
   - `initialize()` now resolves in that case, as on Android. Event subscriptions are set up and queued calls run.
   - If initialization fails without creating the native SDK instance (an invalid configuration), `initialize()` still rejects, and queued calls are now rejected with the same error instead of hanging.
+- iOS: rejected Promises now carry the native error message. On recent Expo versions every rejection reached JS as `<CODE>: undefined reason`, because Expo builds the message from `Exception.reason`, which `Promise.reject(code, description)` does not set. Error codes are unchanged.
 - Raise the pinned native iOS SDK from `ULinkSDK ~> 1.2.0` to `~> 1.2.3`. After a failed startup request, 1.2.3 retries:
   - when the app returns to the foreground;
   - before resolving a link, creating a link or checking for a deferred link (previously these failed until the next foreground).

@@ -52,7 +52,7 @@ public class ULinkReactNativeModule: Module {
                 let call = PendingCall.initialize(
                     config: configMap,
                     resolve: { promise.resolve() },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
                 return
@@ -93,7 +93,7 @@ public class ULinkReactNativeModule: Module {
                     // clearFailure() must not run ahead of this markFailed().
                     await self.queue.markFailed(code: "INITIALIZATION_ERROR", message: error.localizedDescription)
                     self.initTask = nil
-                    promise.reject("INITIALIZATION_ERROR", error.localizedDescription)
+                    promise.rejectWithMessage("INITIALIZATION_ERROR", error.localizedDescription)
                 }
             }
         }
@@ -107,14 +107,14 @@ public class ULinkReactNativeModule: Module {
                         let resp = try await sdk.createLink(parameters: p)
                         promise.resolve(responseToMap(resp))
                     } catch {
-                        promise.reject("CREATE_LINK_ERROR", error.localizedDescription)
+                        promise.rejectWithMessage("CREATE_LINK_ERROR", error.localizedDescription)
                     }
                 }
             } else {
                 let call = PendingCall.createLink(
                     params:  paramsMap,
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -128,14 +128,14 @@ public class ULinkReactNativeModule: Module {
                         let resp = try await sdk.resolveLink(url: url)
                         promise.resolve(responseToMap(resp))
                     } catch {
-                        promise.reject("RESOLVE_LINK_ERROR", error.localizedDescription)
+                        promise.rejectWithMessage("RESOLVE_LINK_ERROR", error.localizedDescription)
                     }
                 }
             } else {
                 let call = PendingCall.resolveLink(
                     url:     url,
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -146,7 +146,7 @@ public class ULinkReactNativeModule: Module {
             if let sdk = self.ulink {
                 Task {
                     guard let linkUrl = URL(string: url) else {
-                        promise.reject("INVALID_URL", "Invalid URL: \(url)")
+                        promise.rejectWithMessage("INVALID_URL", "Invalid URL: \(url)")
                         return
                     }
                     do {
@@ -157,14 +157,14 @@ public class ULinkReactNativeModule: Module {
                             promise.resolve(nil as [String: Any?]?)
                         }
                     } catch {
-                        promise.reject("PROCESS_ULINK_ERROR", error.localizedDescription)
+                        promise.rejectWithMessage("PROCESS_ULINK_ERROR", error.localizedDescription)
                     }
                 }
             } else {
                 let call = PendingCall.processULink(
                     url:     url,
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -178,13 +178,13 @@ public class ULinkReactNativeModule: Module {
                         try await sdk.checkDeferredLinkAsync()
                         promise.resolve()
                     } catch {
-                        promise.reject("DEFERRED_LINK_ERROR", error.localizedDescription)
+                        promise.rejectWithMessage("DEFERRED_LINK_ERROR", error.localizedDescription)
                     }
                 }
             } else {
                 let call = PendingCall.checkDeferredLink(
                     resolve: { promise.resolve() },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -204,7 +204,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getInitialDeepLink(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -217,7 +217,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getInitialUri(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -230,13 +230,13 @@ public class ULinkReactNativeModule: Module {
                     sdk.setInitialUrl(url)
                     promise.resolve()
                 } else {
-                    promise.reject("INVALID_URL", "Invalid URI: \(uri)")
+                    promise.rejectWithMessage("INVALID_URL", "Invalid URI: \(uri)")
                 }
             } else {
                 let call = PendingCall.setInitialUri(
                     uri:     uri,
                     resolve: { promise.resolve() },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -254,7 +254,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getLastLinkData(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -267,7 +267,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getInstallationId(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -284,7 +284,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getInstallationInfo(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -297,7 +297,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.isReinstall(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -310,7 +310,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getCurrentSessionId(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -323,7 +323,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.hasActiveSession(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -336,7 +336,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.getSessionState(
                     resolve: { promise.resolve($0) },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -352,7 +352,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.endSession(
                     resolve: { promise.resolve() },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -368,7 +368,7 @@ public class ULinkReactNativeModule: Module {
             } else {
                 let call = PendingCall.dispose(
                     resolve: { promise.resolve() },
-                    reject:  { code, msg, _ in promise.reject(code, msg) }
+                    reject:  { code, msg, _ in promise.rejectWithMessage(code, msg) }
                 )
                 Task { await self.queue.enqueue(call, module: self) }
             }
@@ -429,5 +429,29 @@ public class ULinkReactNativeModule: Module {
                 ])
             }
             .store(in: &cancellables)
+    }
+}
+
+// MARK: - Rejections
+
+/// Expo builds the JS error message from `Exception.reason`, but
+/// `Promise.reject(_:_:)` only sets `description`, so every rejection reached
+/// JS as "undefined reason". This exception reports its message as the reason.
+final class ULinkRejection: Exception, @unchecked Sendable {
+    private let message: String
+
+    init(code: String, message: String) {
+        self.message = message
+        super.init(name: code, description: message, code: code)
+    }
+
+    override var reason: String {
+        message
+    }
+}
+
+extension Promise {
+    func rejectWithMessage(_ code: String, _ message: String) {
+        reject(ULinkRejection(code: code, message: message))
     }
 }
