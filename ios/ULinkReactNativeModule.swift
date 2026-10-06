@@ -411,8 +411,15 @@ public class ULinkReactNativeModule: Module {
         self.cancellables.removeAll()
         self.initTask = nil
         self.initInFlight = false
-        // Reset the link buffer so stale SDK reference can't be used after dispose.
+        // Reset the call queue and link buffer so the disposed SDK is not used.
+        Task { await self.queue.reset() }
         Task { await ULinkIncomingLinkBuffer.shared.reset() }
+    }
+
+    /// Whether `sdk` is still this module's live SDK. Internal so the pending
+    /// queue can tell that a dispose happened before its own reset() ran.
+    func isCurrent(_ sdk: ULink) -> Bool {
+        ulink === sdk
     }
 
     // MARK: - Combine stream subscriptions

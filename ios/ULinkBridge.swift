@@ -417,9 +417,19 @@ actor ULinkPendingQueue {
         failure = nil
     }
 
+    /// Called when the SDK is disposed. Calls made after dispose queue for the
+    /// next initialize() instead of running against the disposed instance.
+    func reset() {
+        ready = false
+        ulink = nil
+        failure = nil
+    }
+
     /// Enqueue a call.  If already ready, execute immediately (no queue).
+    /// `module.isCurrent(sdk)` is checked as well as `ready`: the module clears
+    /// its SDK synchronously on dispose, while `reset()` reaches this actor later.
     func enqueue(_ call: PendingCall, module: ULinkReactNativeModule) async {
-        if ready, ulink != nil {
+        if ready, let sdk = ulink, module.isCurrent(sdk) {
             await execute(call, module: module)
         } else if let failure = failure {
             call.reject(failure.code, failure.message, nil)
@@ -430,7 +440,12 @@ actor ULinkPendingQueue {
 
     // swiftlint:disable:next cyclomatic_complexity function_body_length
     private func execute(_ call: PendingCall, module: ULinkReactNativeModule) async {
-        guard let sdk = ulink else { return }
+        // A dispose earlier in the same drain resets the queue; keep later calls
+        // for the next initialize() rather than dropping their Promises.
+        guard let sdk = ulink else {
+            pending.append(call)
+            return
+        }
 
         switch call {
 
@@ -520,6 +535,9 @@ actor ULinkPendingQueue {
         case .dispose(let resolve, _):
             sdk.dispose()
             module.didDispose()
+            // Reset inline: didDispose() schedules reset(), which would only run
+            // after the rest of this drain.
+            reset()
             resolve(())
         }
     }
