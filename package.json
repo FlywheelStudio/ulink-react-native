@@ -1,7 +1,7 @@
 {
   "name": "@ulinkly/react-native",
   "version": "0.1.7",
-  "description": "Official ULink deep linking SDK for React Native and Expo.",
+  "description": "Official Ulinkly deep linking SDK for React Native and Expo. Firebase Dynamic Links replacement.",
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "files": [
@@ -31,7 +31,10 @@
     "dynamic-links",
     "expo",
     "react-native",
-    "deferred-deep-linking"
+    "deferred-deep-linking",
+    "universal-links",
+    "app-links",
+    "firebase-dynamic-links"
   ],
   "repository": {
     "type": "git",
@@ -42,7 +45,7 @@
   },
   "author": "ULink Team",
   "license": "MIT",
-  "homepage": "https://github.com/FlywheelStudio/ulink-react-native.git#readme",
+  "homepage": "https://ulink.ly/framework/react-native",
   "devDependencies": {
     "@babel/core": "^7.26.0",
     "@expo/config-plugins": "^56.0.9",
