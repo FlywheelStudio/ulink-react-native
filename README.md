@@ -1,6 +1,8 @@
 # @ulinkly/react-native
 
-Official ULink deep linking SDK for React Native and Expo. Bridges the native iOS (`ULinkSDK 1.1.1`) and Android (`ly.ulink:ulink-sdk 1.1.0`) SDKs via the Expo Modules API, delivering full feature parity with the Flutter SDK: dynamic links, deferred deep linking, install attribution, reinstall detection, session tracking, and MAU dedup via persistent device ID.
+[React Native deep linking guide](https://ulink.ly/framework/react-native) | [Docs](https://docs.ulink.ly/getting-started/react-native) | [Migrating from Firebase Dynamic Links](https://ulink.ly/migrate/firebase-dynamic-links) | [Pricing](https://ulink.ly/pricing)
+
+Official [Ulinkly](https://ulink.ly) deep linking SDK for React Native and Expo. Bridges the native iOS (`ULinkSDK 1.1.1`) and Android (`ly.ulink:ulink-sdk 1.1.0`) SDKs via the Expo Modules API, delivering full feature parity with the Flutter SDK: dynamic links, deferred deep linking, install attribution, reinstall detection, session tracking, and MAU dedup via persistent device ID.
 
 ## ULink SDKs
 
@@ -9,7 +11,7 @@ ULink ships native SDKs for every major mobile platform:
 - **iOS** — [`ULinkSDK`](https://docs.ulink.ly/getting-started/ios) (CocoaPods + SPM)
 - **Android** — [`ly.ulink:ulink-sdk`](https://docs.ulink.ly/getting-started/android) (Maven Central)
 - **Flutter** — [`flutter_ulink_sdk`](https://docs.ulink.ly/getting-started/flutter) (pub.dev)
-- **React Native / Expo** — `@ulinkly/react-native` (this package)
+- **React Native / Expo** — [`@ulinkly/react-native`](https://docs.ulink.ly/getting-started/react-native) (this package)
 
 ## Requirements
 
