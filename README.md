@@ -175,6 +175,8 @@ If for any reason you need to wire manually, forward both callbacks through `RCT
 
 Note: ULink automatically serves the `.well-known/assetlinks.json` file for your registered domain — no manual hosting required.
 
+To check your domain's files, use the free [AASA validator](https://ulink.ly/tools/apple-app-site-association-validator) (iOS) and [assetlinks.json validator](https://ulink.ly/tools/assetlinks-validator) (Android). To check a link end to end, use the [deep link tester](https://ulink.ly/tools/deep-link-tester).
+
 ---
 
 ## Quick Start
