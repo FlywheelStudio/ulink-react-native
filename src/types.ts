@@ -10,11 +10,21 @@ export interface ULinkConfig {
   apiKey: string;
   baseUrl?: string;            // default https://api.ulink.ly
   debug?: boolean;
+  /**
+   * Persist the last resolved link across app launches (read via getLastLinkData()).
+   * Platform defaults differ when omitted: false on iOS, true on Android.
+   * Set it explicitly for consistent behaviour on both platforms.
+   */
   persistLastLinkData?: boolean;
   lastLinkTimeToLiveSeconds?: number;
   clearLastLinkOnRead?: boolean;
   redactAllParametersInLastLink?: boolean;
   redactedParameterKeysInLastLink?: string[];
+  /**
+   * Check for a deferred deep link automatically after initialize(). Default true.
+   * Deferred deep linking requires a paid plan (Starter or higher); on the Free plan
+   * the server returns success:false and no deferred link is delivered.
+   */
   autoCheckDeferredLink?: boolean;
   // NOTE: enableDeepLinkIntegration is intentionally NOT exposed; the module
   // forces it false on Android and owns link delivery on both platforms.
@@ -27,13 +37,19 @@ export interface ULinkParameters {
   slug?: string;
   /** Optional display label shown in the ULink dashboard. */
   name?: string;
-  /** Idempotency key — if a link with this externalId already exists on the domain it is returned instead of creating a duplicate. */
+  /**
+   * Idempotency key, scoped to the project (not the domain). If a link with this
+   * externalId already exists anywhere in the project, that link is returned as-is
+   * instead of creating a duplicate; the rest of the payload, including domain, is ignored.
+   */
   externalId?: string;
   iosUrl?: string;
   androidUrl?: string;
   iosFallbackUrl?: string;
   androidFallbackUrl?: string;
+  /** Web fallback URL. Required by the server for both dynamic and unified links. */
   fallbackUrl?: string;
+  /** Arbitrary JSON-serializable map. Supported on both dynamic and unified links. */
   parameters?: Record<string, unknown>;
   socialMediaTags?: SocialMediaTags;
   metadata?: Record<string, unknown>;
