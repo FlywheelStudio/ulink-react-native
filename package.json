@@ -1,6 +1,6 @@
 {
   "name": "@ulinkly/react-native",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Official Ulinkly deep linking SDK for React Native and Expo. Firebase Dynamic Links replacement.",
   "main": "build/index.js",
   "types": "build/index.d.ts",

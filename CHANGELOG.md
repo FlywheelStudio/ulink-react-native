@@ -2,6 +2,10 @@
 
 All notable changes to `@ulinkly/react-native` will be documented in this file.
 
+## 0.1.8
+
+- Android: native SDK 1.2.4 (`ly.ulink:ulink-sdk:1.2.4`), Java initialization now ready before the first Activity. The module initializes through the Kotlin API, so React Native apps see no behaviour change. iOS is unchanged.
+
 ## 0.1.7
 
 - iOS: calls made after `dispose()` no longer run against the disposed SDK. The pending-call queue kept its "ready" state and SDK reference after dispose, so a call made before the next `initialize()` ran immediately on the disposed instance. Such calls now wait for the next `initialize()`, like calls made before the first one.
