@@ -228,11 +228,11 @@ async function shareLink() {
     type: 'dynamic',
     slug: 'my-promo',
     // externalId deduplicates repeat calls — if a link with this ID already exists
-    // on the domain, the existing link is returned instead of creating a new one.
+    // in the project (on any domain), the existing link is returned instead of creating a new one.
     externalId: 'promo-launch-2024',
     iosFallbackUrl: 'https://apps.apple.com/app/id123456789',
     androidFallbackUrl: 'https://play.google.com/store/apps/details?id=com.myapp',
-    fallbackUrl: 'https://myapp.com/promo',
+    fallbackUrl: 'https://myapp.com/promo',   // required for both dynamic and unified links
     parameters: { screen: 'promo', campaign: 'launch' },
     socialMediaTags: {
       ogTitle: 'Check out MyApp!',
@@ -290,6 +290,8 @@ Processes a raw ULink URL and returns resolved data, or `null` if the URL is not
 
 Explicitly triggers a deferred deep link check. Normally called once after `initialize()` when `autoCheckDeferredLink` is not set. Results are delivered via the `onDynamicLink` or `onUnifiedLink` event.
 
+Deferred deep linking requires a paid plan (Starter or higher). On the Free plan the server returns `success: false` and no deferred link is delivered.
+
 ### `ULink.getInitialDeepLink(): Promise<ULinkResolvedData | null>`
 
 Returns the deep link that launched the app in the current session, or `null` if the app was opened normally. Note: cold-start links are also delivered via `onDynamicLink`/`onUnifiedLink` events (the preferred pattern).
@@ -304,7 +306,7 @@ Override the initial URI — primarily a testing aid.
 
 ### `ULink.getLastLinkData(): Promise<ULinkResolvedData | null>`
 
-Returns the most recently resolved link data, optionally persisted across launches (see `persistLastLinkData` in `ULinkConfig`).
+Returns the most recently resolved link data, optionally persisted across launches (see `persistLastLinkData` in `ULinkConfig`; when omitted it defaults to `false` on iOS and `true` on Android).
 
 ### `ULink.getInstallationId(): Promise<string | null>`
 
@@ -371,12 +373,12 @@ interface ULinkConfig {
   apiKey: string;                          // required
   baseUrl?: string;                        // default: https://api.ulink.ly
   debug?: boolean;
-  persistLastLinkData?: boolean;
+  persistLastLinkData?: boolean;           // default: false on iOS, true on Android; set explicitly for consistency
   lastLinkTimeToLiveSeconds?: number;
   clearLastLinkOnRead?: boolean;
   redactAllParametersInLastLink?: boolean;
   redactedParameterKeysInLastLink?: string[];
-  autoCheckDeferredLink?: boolean;
+  autoCheckDeferredLink?: boolean;         // default: true. Deferred linking requires a paid plan (Starter or higher).
   // enableDeepLinkIntegration is intentionally NOT exposed:
   // the module forces it false on Android and owns link delivery on both platforms.
 }
@@ -390,13 +392,13 @@ interface ULinkParameters {
   type?: 'dynamic' | 'unified';
   slug?: string;
   name?: string;                           // Optional display label shown in the ULink dashboard.
-  externalId?: string;                     // Optional idempotency key — dedupes repeat createLink calls on the same domain.
+  externalId?: string;                     // Optional idempotency key, scoped to the project — a repeat createLink call with the same externalId returns the existing link, whatever its domain.
   iosUrl?: string;
   androidUrl?: string;
   iosFallbackUrl?: string;
   androidFallbackUrl?: string;
-  fallbackUrl?: string;
-  parameters?: Record<string, unknown>;   // arbitrary JSON-serializable map
+  fallbackUrl?: string;                    // Required by the server for both dynamic and unified links.
+  parameters?: Record<string, unknown>;   // arbitrary JSON-serializable map (dynamic and unified links)
   socialMediaTags?: SocialMediaTags;
   metadata?: Record<string, unknown>;     // arbitrary JSON-serializable map
 }
@@ -484,6 +486,10 @@ interface ULinkLogEntry {
 
 `initialize()` is async. Call it at app startup (before mounting any screen that handles deep links) and always `await` it. On Android, any method called before `initialize()` resolves will reject with a `ULinkError`. On iOS, calls are queued, but order is undefined — `await` init for reliable behavior on both platforms.
 
+### Deferred deep linking requires a paid plan
+
+Deferred deep linking is available on paid plans (Starter or higher). On the Free plan the deferred match request returns `success: false` and no deferred link is delivered.
+
 ### iOS deferred deep linking is probabilistic
 
 iOS deferred linking uses fingerprint matching (IP, user-agent, timestamp). It does **not** use IDFA, SKAdNetwork, pasteboard, or ATT — no tracking permission prompts or extra entitlements are required. Because matching is fingerprint-based, a 100% match rate cannot be guaranteed on iOS (network/VPN conditions can reduce accuracy). Android deferred linking uses the Play Install Referrer (deterministic) with a fingerprint fallback.
@@ -519,7 +525,7 @@ In-app deep links with custom parameters, fallback URLs, and smart app store red
 
 ### Unified Links
 
-Simple platform-based redirects (e.g. iOS App Store URL, Android Play Store URL, web fallback). The SDK does **not** auto-redirect — inspect the data in `onUnifiedLink` and open externally if appropriate.
+Simple platform-based redirects (e.g. iOS App Store URL, Android Play Store URL, web fallback). Unified links created via the SDK can also carry `parameters`. The SDK does **not** auto-redirect — inspect the data in `onUnifiedLink` and open externally if appropriate.
 
 ### Query Parameter Passthrough
 
