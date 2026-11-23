@@ -2,6 +2,10 @@
 
 All notable changes to `@ulinkly/react-native` will be documented in this file.
 
+## 0.1.9
+
+- Android: native SDK 1.2.5 (`ly.ulink:ulink-sdk:1.2.5`), which declares `INTERNET` and `ACCESS_NETWORK_STATE` in its manifest so they merge into the app automatically. Apps that had not added them could not reach the API and logged a `SecurityException` for the network callback on every start. Expo and React Native templates usually include `INTERNET` already; `ACCESS_NETWORK_STATE` is the one most apps were missing. iOS is unchanged.
+
 ## 0.1.8
 
 - Android: native SDK 1.2.4 (`ly.ulink:ulink-sdk:1.2.4`), Java initialization now ready before the first Activity. The module initializes through the Kotlin API, so React Native apps see no behaviour change. iOS is unchanged.
